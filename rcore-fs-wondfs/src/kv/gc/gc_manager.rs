@@ -22,7 +22,7 @@ impl GCManager {
 }
 
 impl GCManager {
-    pub fn find_next_pos_to_write(&self, size: u32) -> Option<u32> {
+    pub fn find_write_pos(&self, size: u32) -> Option<u32> {
         for block in self.block_table.table.iter() {
             if block.reserved_size >= size {
                 let offset = block.reserved_offset;
@@ -100,7 +100,7 @@ impl GCManager {
             used_entries.push(last_entry.unwrap());
         }
         for entry in used_entries.iter_mut() {
-            let d_address = self.find_next_pos_to_write_except(entry.1, block_no);
+            let d_address = self.find_write_pos_except(entry.1, block_no);
             entry.3 = d_address.unwrap();
         }
         let mut gc_group = GCEventGroup::new();
@@ -156,7 +156,7 @@ impl GCManager {
         }
     }
 
-    fn find_next_pos_to_write_except(&self, size: u32, block_no: u32) -> Option<u32> {
+    fn find_write_pos_except(&self, size: u32, block_no: u32) -> Option<u32> {
         for block in self.block_table.table.iter() {
             if block.reserved_size >= size && block.block_no != block_no {
                 let offset = block.reserved_offset;
@@ -193,14 +193,14 @@ mod test {
     #[test]
     fn basics() {
         let mut manager = GCManager::new();
-        assert_eq!(manager.find_next_pos_to_write(5), Some(0));
+        assert_eq!(manager.find_write_pos(5), Some(0));
         manager.set_page(0, PageUsedStatus::Busy(0));
         manager.set_page(1, PageUsedStatus::Busy(0));
         manager.set_page(2, PageUsedStatus::Busy(0));
         manager.set_page(3, PageUsedStatus::Busy(0));
         manager.set_page(4, PageUsedStatus::Busy(0));
         assert_eq!(manager.get_page(0), PageUsedStatus::Busy(0));
-        assert_eq!(manager.find_next_pos_to_write(128), Some(128));
+        assert_eq!(manager.find_write_pos(128), Some(128));
         let event = manager.new_gc_event(GCStrategy::Forward);
         assert_eq!(event.events[0], GCEvent::Move(MoveGCEvent{ index: 0, ino: 0, size: 5, o_address: 0, d_address: 128 }));
         assert_eq!(event.events[1], GCEvent::Erase(EraseGCEvent{ index: 1, block_no: 0 }));

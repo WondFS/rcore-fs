@@ -2,6 +2,10 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::cmp::max;
 use crate::buf;
+use super::gc::gc_manager;
+use super::component::bit;
+use super::component::pit;
+use super::component::super_block;
 use super::lsm_tree::lsm_tree;
 use serde::{Serialize, Deserialize};
 
@@ -25,19 +29,15 @@ pub struct DataObjectValue {
 }
 
 pub struct KVManager {
+    pub bit: bit::BIT,
+    pub pit: pit::PIT,
+    pub gc: gc_manager::GCManager,
+    pub super_stat: super_block::SuperStat,
     pub buf: Arc<RefCell<buf::BufCache>>,
     pub lsm_tree: lsm_tree::LSMTree,
 }
 
 impl KVManager {
-    pub fn new() -> KVManager {
-        let buf = Arc::new(RefCell::new(buf::BufCache::new()));
-        KVManager {
-            lsm_tree: lsm_tree::LSMTree::new(Arc::clone(&buf)),
-            buf,
-        }
-    }
-
     pub fn get(&mut self, key: &String, off: usize, len: usize) -> Option<Vec<u8>> {
         let operation_type = KVManager::parse_key(key);
         match operation_type {
@@ -288,11 +288,7 @@ impl KVManager {
 
 }
 
-impl KVManager {
-    pub fn find_write_pos(&mut self, size: u32) -> u32 {
-        0
-    }
-}
+
 
 #[cfg(test)]
 mod tests {
