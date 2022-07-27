@@ -64,7 +64,7 @@ mod test {
         let data =[2; 4096];
         manager.disk_write(256, &data);
         let data = manager.disk_read(256);
-        assert_eq!(data, [0; 4096]);
+        assert_eq!(data, [2; 4096]);
         manager.disk_erase(2);
         let data = manager.disk_read(1);
         assert_eq!(data, [0; 4096]);

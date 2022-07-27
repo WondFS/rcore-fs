@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::cell::RefCell;
+extern crate alloc;
+use spin::RwLock;
+use alloc::sync::Arc;
 use super::raw_entry;
 use crate::buf;
 use std::cmp::min;
@@ -11,7 +12,7 @@ pub struct BlockIter {
 }
 
 impl BlockIter {
-    pub fn new(block_id: u32, read_buf: Arc<RefCell<buf::BufCache>>) -> BlockIter {
+    pub fn new(block_id: u32, read_buf: Arc<RwLock<buf::BufCache>>) -> BlockIter {
         let eof_key = raw_entry::EOF.as_bytes().to_vec();
         let eof_value = raw_entry::EOF.as_bytes().to_vec();
         let mut entries = vec![];
@@ -28,7 +29,7 @@ impl BlockIter {
             if is_end {
                 break;
             }
-            let page_data = read_buf.borrow_mut().read(0, block_id+i);
+            let page_data = read_buf.write().read(0, block_id+i);
             let mut j = 0;
             while j < 4096 {
                 match read_index {

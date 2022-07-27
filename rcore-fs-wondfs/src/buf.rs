@@ -48,7 +48,7 @@ impl BufCache {
     fn get_data(&mut self, address: u32) -> Option<[u8; 4096]> {
         let data = self.cache.get(address);
         if data.is_some() {
-            return Some(data.as_deref().unwrap().data);
+            return Some(data.unwrap().data);
         }
         None
     }

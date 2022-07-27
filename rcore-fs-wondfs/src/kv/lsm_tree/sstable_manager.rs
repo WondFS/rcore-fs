@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::cell::RefCell;
+extern crate alloc;
+use spin::RwLock;
+use alloc::sync::Arc;
 use std::collections::HashMap;
 use std::collections::BTreeMap;
 use std::cmp::Ordering;
@@ -20,11 +21,11 @@ pub struct SSTableManager {
     pub files: BTreeMap<u32, (u32, usize)>,
     pub file_table: HashMap<u32, Vec<u32>>,
     pub block_table: HashMap<u32, bool>,
-    pub buf: Arc<RefCell<buf::BufCache>>,
+    pub buf: Arc<RwLock<buf::BufCache>>,
 }
 
 impl SSTableManager {
-    pub fn new(block_id: u32, block_num: usize, buf: Arc<RefCell<buf::BufCache>>) -> SSTableManager {
+    pub fn new(block_id: u32, block_num: usize, buf: Arc<RwLock<buf::BufCache>>) -> SSTableManager {
         SSTableManager {
             buf,
             block_num,
@@ -42,7 +43,7 @@ impl SSTableManager {
         let mut index = self.block_id;
         while index <= self.block_id+self.block_num as u32 {
             let address = index * 128;
-            let data = self.buf.borrow_mut().read(0, address);
+            let data = self.buf.write().read(0, address);
             if !(data[0] == 0x22 && data[1] == 0x22 && data[2] == 0xff && data[3] == 0xff) {
                 index += 1;
                 continue;
@@ -86,7 +87,7 @@ impl SSTableManager {
             page_data[size..size+write_num].copy_from_slice(&data[..write_num]);
             size += write_num;
             if write_num != data.len() {
-                self.buf.borrow_mut().write(0, self.cur_block_id * 128 + index, &page_data);
+                self.buf.write().write(0, self.cur_block_id * 128 + index, &page_data);
                 index += 1;
                 size = 0;
                 page_data = [0; 4096];
@@ -98,7 +99,7 @@ impl SSTableManager {
                     size += write_num;
                     remain_num -= write_num;
                     if remain_num != 0 {
-                        self.buf.borrow_mut().write(0, self.cur_block_id * 128 + index, &page_data);
+                        self.buf.write().write(0, self.cur_block_id * 128 + index, &page_data);
                         index += 1;
                         size = 0;
                         page_data = [0; 4096];
@@ -109,7 +110,7 @@ impl SSTableManager {
         let mut eof_entry = raw_entry::Entry::new(raw_entry::EOF.as_bytes().to_vec(), raw_entry::EOF.as_bytes().to_vec());
         let data = eof_entry.encode_entry();
         page_data[size..size+data.len()].copy_from_slice(&data);
-        self.buf.borrow_mut().write(0, self.cur_block_id * 128 + index, &page_data);
+        self.buf.write().write(0, self.cur_block_id * 128 + index, &page_data);
         self.update_cur_block_id();
     }
 
@@ -209,7 +210,7 @@ impl SSTableManager {
                     self.update_cur_block_id();
                     index = 0;
                 }
-                self.buf.borrow_mut().write(0, self.cur_block_id * 128 + index as u32, &page_data);
+                self.buf.write().write(0, self.cur_block_id * 128 + index as u32, &page_data);
                 index += 1;
                 size = 0;
                 page_data = [0; 4096];
@@ -220,7 +221,7 @@ impl SSTableManager {
         let mut eof_entry = raw_entry::Entry::new(raw_entry::EOF.as_bytes().to_vec(), raw_entry::EOF.as_bytes().to_vec());
         let data = eof_entry.encode_entry();
         page_data[size..size+data.len()].copy_from_slice(&data);
-        self.buf.borrow_mut().write(0, self.cur_block_id * 128 + index as u32, &page_data);
+        self.buf.write().write(0, self.cur_block_id * 128 + index as u32, &page_data);
         self.update_cur_block_id();
     }
 }

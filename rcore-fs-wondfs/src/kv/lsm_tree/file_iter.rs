@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::cell::RefCell;
+extern crate alloc;
+use spin::RwLock;
+use alloc::sync::Arc;
 use super::raw_entry;
 use super::block_iter;
 use crate::buf;
@@ -9,11 +10,11 @@ pub struct FileIter {
     pub block_num: usize,
     pub iter: usize,
     pub block_iter: block_iter::BlockIter,
-    pub read_buf: Arc<RefCell<buf::BufCache>>,
+    pub read_buf: Arc<RwLock<buf::BufCache>>,
 }
 
 impl FileIter {
-    pub fn new(block_id: u32, block_num: usize, read_buf: Arc<RefCell<buf::BufCache>>) -> FileIter {
+    pub fn new(block_id: u32, block_num: usize, read_buf: Arc<RwLock<buf::BufCache>>) -> FileIter {
         let block_iter = block_iter::BlockIter::new(block_id, Arc::clone(&read_buf));
         FileIter {
             block_id,

@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::cell::RefCell;
+extern crate alloc;
+use spin::RwLock;
+use alloc::sync::Arc;
 use crate::buf;
 use crate::util::array::array;
 use super::gc::gc_manager;
@@ -12,7 +13,7 @@ use super::kv_manager::*;
 
 impl KVManager {
     pub fn new() -> KVManager {
-        let buf = Arc::new(RefCell::new(buf::BufCache::new()));
+        let buf = Arc::new(RwLock::new(buf::BufCache::new()));
         KVManager {
             lsm_tree: lsm_tree::LSMTree::new(Arc::clone(&buf)),
             buf,
@@ -25,7 +26,7 @@ impl KVManager {
 }
 
 impl KVManager {
-    pub fn find_write_pos(&mut self, size: u32) -> u32 {
+    pub fn find_write_pos(&mut self, size: usize) -> u32 {
         let mut res;
         loop {
             res = self.gc.find_write_pos(size);
@@ -218,7 +219,7 @@ impl KVManager {
 
 impl KVManager {
     fn read_page(&mut self, address: u32) -> [u8; 4096] {
-        self.buf.borrow_mut().read(0, address)
+        self.buf.write().read(0, address)
     }
 
     fn read_block(&mut self, block_no: u32) -> array::Array1::<[u8; 4096]> {
@@ -232,7 +233,7 @@ impl KVManager {
     }
 
     fn write_page(&mut self, address: u32, data: [u8; 4096]) {
-        self.buf.borrow_mut().write(0, address, &data);
+        self.buf.write().write(0, address, &data);
     }
 
     fn write_block(&mut self, block_no: u32, data: &array::Array1::<[u8; 4096]>) {
@@ -246,7 +247,7 @@ impl KVManager {
     }
 
     fn erase_block(&mut self, block_no: u32) {
-        self.buf.borrow_mut().erase(0, block_no);
+        self.buf.write().erase(0, block_no);
     }
 }
 

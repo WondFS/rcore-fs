@@ -22,9 +22,9 @@ impl GCManager {
 }
 
 impl GCManager {
-    pub fn find_write_pos(&self, size: u32) -> Option<u32> {
+    pub fn find_write_pos(&self, size: usize) -> Option<u32> {
         for block in self.block_table.table.iter() {
-            if block.reserved_size >= size {
+            if block.reserved_size >= size as u32 {
                 let offset = block.reserved_offset;
                 return Some((block.block_no * 128) as u32 + offset);
             }

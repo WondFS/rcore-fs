@@ -33,11 +33,11 @@ impl Entry {
     }
 
     pub fn encode_u32(data: u32) -> Vec<u8> {
-        let mut ret = vec![];
+        let mut ret = [0; 4];
         ret[0] = (data >> 24) as u8;
         ret[1] = (data >> 16) as u8;
         ret[2] = (data >> 8) as u8;
         ret[3] = data as u8;
-        ret
+        ret.to_vec()
     }
 }

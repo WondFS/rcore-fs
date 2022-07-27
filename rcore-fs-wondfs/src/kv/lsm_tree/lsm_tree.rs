@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::cell::RefCell;
+extern crate alloc;
+use spin::RwLock;
+use alloc::sync::Arc;
 use crate::buf;
 use super::memtable;
 use super::raw_entry;
@@ -11,7 +12,7 @@ pub struct LSMTree {
 }
 
 impl LSMTree {
-    pub fn new(buf: Arc<RefCell<buf::BufCache>>) -> LSMTree {
+    pub fn new(buf: Arc<RwLock<buf::BufCache>>) -> LSMTree {
         LSMTree {
             memtable: memtable::Memtable::new(128 * 4096),
             sstable_manager: sstable_manager::SSTableManager::new(10, 10, buf),
