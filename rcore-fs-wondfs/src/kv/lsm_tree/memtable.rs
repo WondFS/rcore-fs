@@ -55,7 +55,8 @@ impl Memtable {
     }
 
     pub fn can_put(&self, size: usize) -> bool {
-        self.size + size <= self.threshold
+        // trick 25
+        self.size + size <= self.threshold - 50
     }
 
     pub fn get_size(&self) -> usize {

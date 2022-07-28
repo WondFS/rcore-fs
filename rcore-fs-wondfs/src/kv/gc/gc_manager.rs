@@ -185,24 +185,3 @@ impl GCManager {
     }
 
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn basics() {
-        let mut manager = GCManager::new();
-        assert_eq!(manager.find_write_pos(5), Some(0));
-        manager.set_page(0, PageUsedStatus::Busy(0));
-        manager.set_page(1, PageUsedStatus::Busy(0));
-        manager.set_page(2, PageUsedStatus::Busy(0));
-        manager.set_page(3, PageUsedStatus::Busy(0));
-        manager.set_page(4, PageUsedStatus::Busy(0));
-        assert_eq!(manager.get_page(0), PageUsedStatus::Busy(0));
-        assert_eq!(manager.find_write_pos(128), Some(128));
-        let event = manager.new_gc_event(GCStrategy::Forward);
-        assert_eq!(event.events[0], GCEvent::Move(MoveGCEvent{ index: 0, ino: 0, size: 5, o_address: 0, d_address: 128 }));
-        assert_eq!(event.events[1], GCEvent::Erase(EraseGCEvent{ index: 1, block_no: 0 }));
-    }
-}

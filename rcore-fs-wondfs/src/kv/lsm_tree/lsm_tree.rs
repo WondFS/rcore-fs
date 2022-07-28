@@ -3,7 +3,7 @@ use spin::RwLock;
 use alloc::sync::Arc;
 use crate::buf;
 use super::memtable;
-use super::raw_entry;
+use super::entry;
 use super::sstable_manager;
 
 pub struct LSMTree {
@@ -15,17 +15,16 @@ impl LSMTree {
     pub fn new(buf: Arc<RwLock<buf::BufCache>>) -> LSMTree {
         LSMTree {
             memtable: memtable::Memtable::new(128 * 4096),
-            sstable_manager: sstable_manager::SSTableManager::new(10, 10, buf),
+            sstable_manager: sstable_manager::SSTableManager::new(5, 10, buf),
         }
     }
 
     pub fn flush(&mut self) {
-        self.sstable_manager.flush(self.memtable.flush().clone());
+        self.sstable_manager.flush(&self.memtable.flush());
     }
 
     pub fn put(&mut self, key: &Vec<u8>, value: &Vec<u8>) {
-        let mut entry = raw_entry::Entry::new(key.to_owned(), value.to_owned());
-        if !self.memtable.can_put(entry.encode_entry().len()) {
+        if !self.memtable.can_put(key.len() + value.len() + 12) {
             self.flush();
         }
         self.memtable.put(key, value);
@@ -34,7 +33,7 @@ impl LSMTree {
     pub fn get(&mut self, key: &Vec<u8>) -> Option<Vec<u8>> {
         match self.memtable.get(key) {
             Some(v) => {
-                if v != raw_entry::TOMBSTONE.as_bytes().to_vec() {
+                if v != entry::TOMBSTONE.as_bytes().to_vec() {
                     return Some(v);
                 } else {
                     return None;
@@ -47,6 +46,10 @@ impl LSMTree {
     }
 
     pub fn delete(&mut self, key: &Vec<u8>) {
-        self.memtable.put(key, &raw_entry::TOMBSTONE.as_bytes().to_vec());
+        let value = entry::TOMBSTONE.as_bytes().to_vec();
+        if !self.memtable.can_put(key.len() + value.len() + 12) {
+            self.flush();
+        }
+        self.memtable.put(key, &value);
     }
 }

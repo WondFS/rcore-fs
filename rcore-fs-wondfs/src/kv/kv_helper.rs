@@ -23,6 +23,11 @@ impl KVManager {
             super_stat: super_block::SuperStat::new(),
         }
     }
+
+    pub fn mount(&mut self) {
+        self.read_bit();
+        self.read_pit();
+    }
 }
 
 impl KVManager {
@@ -57,8 +62,8 @@ impl KVManager {
 
 impl KVManager {
     pub fn read_bit(&mut self) {
-        let mut data_1 = self.read_block(1);
-        let data_2 = self.read_block(2);
+        let mut data_1 = self.read_block(1, false);
+        let data_2 = self.read_block(2, false);
         let mut flag = false;
         for i in 0..4 {
             if data_2.get(0)[i] & 0b1111_1111 != 0 {
@@ -67,9 +72,9 @@ impl KVManager {
             }
         }
         if flag {
-            self.erase_block(1);
-            self.write_block(1, &data_2);
-            self.erase_block(2);
+            self.erase_block(1, false);
+            self.write_block(1, &data_2, false);
+            self.erase_block(2, false);
             data_1 = data_2;
         }
         self.set_bit(&data_1);
@@ -121,10 +126,10 @@ impl KVManager {
         if self.bit.need_sync() {
             let data = self.bit.encode();
             let data = KVManager::transfer(&data);
-            self.write_block(2, &data);
-            self.erase_block(1);
-            self.write_block(1, &data);
-            self.erase_block(2);
+            self.write_block(2, &data, false);
+            self.erase_block(1, false);
+            self.write_block(1, &data, false);
+            self.erase_block(2, false);
             self.bit.sync();
         }
     }
@@ -141,8 +146,8 @@ impl KVManager {
 
 impl KVManager {
     pub fn read_pit(&mut self) {
-        let mut data_1 = self.read_block(3);
-        let data_2 = self.read_block(4);
+        let mut data_1 = self.read_block(3, false);
+        let data_2 = self.read_block(4, false);
         let mut flag = false;
         for i in 0..4 {
             if data_2.get(0)[i] & 0b1111_1111 != 0 {
@@ -151,9 +156,9 @@ impl KVManager {
             }
         }
         if flag {
-            self.erase_block(1);
-            self.write_block(1, &data_2);
-            self.erase_block(2);
+            self.erase_block(3, false);
+            self.write_block(3, &data_2, false);
+            self.erase_block(4, false);
             data_1 = data_2;
         }
         self.set_pit(&data_1);
@@ -199,10 +204,10 @@ impl KVManager {
         if self.pit.need_sync() {
             let data = self.pit.encode();
             let data = KVManager::transfer(&data);
-            self.write_block(4, &data);
-            self.erase_block(3);
-            self.write_block(3, &data);
-            self.erase_block(4);
+            self.write_block(4, &data, false);
+            self.erase_block(3, false);
+            self.write_block(3, &data, false);
+            self.erase_block(4, false);
             self.pit.sync();
         }
     }
@@ -218,36 +223,48 @@ impl KVManager {
 }
 
 impl KVManager {
-    fn read_page(&mut self, address: u32) -> [u8; 4096] {
-        self.buf.write().read(0, address)
+    pub fn read_page(&mut self, address: u32, is_main: bool) -> [u8; 4096] {
+        if is_main {
+            self.buf.write().read(0, address + 15 * 128)
+        } else {
+            self.buf.write().read(0, address)
+        }
     }
 
-    fn read_block(&mut self, block_no: u32) -> array::Array1::<[u8; 4096]> {
+    pub fn read_block(&mut self, block_no: u32, is_main: bool) -> array::Array1::<[u8; 4096]> {
         let address = block_no * 128;
         let mut data = array::Array1::<[u8; 4096]>::new(128, [0; 4096]);
         for index in 0..128 {
-            let page = self.read_page(address + index);
+            let page = self.read_page(address + index, is_main);
             data.set(index, page);
         }
         data
     }
 
-    fn write_page(&mut self, address: u32, data: [u8; 4096]) {
-        self.buf.write().write(0, address, &data);
+    pub fn write_page(&mut self, address: u32, data: &[u8; 4096], is_main: bool) {
+        if is_main {
+            self.buf.write().write(0, address + 15 * 128, &data);
+        } else {
+            self.buf.write().write(0, address, &data);
+        }
     }
 
-    fn write_block(&mut self, block_no: u32, data: &array::Array1::<[u8; 4096]>) {
+    pub fn write_block(&mut self, block_no: u32, data: &array::Array1::<[u8; 4096]>, is_main: bool) {
         if data.len() != 128 {
             panic!("CoreManager: write block not matched size");
         }
         let address = block_no * 128;
         for (index, data) in data.iter().enumerate() {
-            self.write_page(address + index as u32, data);
+            self.write_page(address + index as u32, &data, is_main);
         }
     }
 
-    fn erase_block(&mut self, block_no: u32) {
-        self.buf.write().erase(0, block_no);
+    pub fn erase_block(&mut self, block_no: u32, is_main: bool) {
+        if is_main {
+            self.buf.write().erase(0, block_no + 15);
+        } else {
+            self.buf.write().erase(0, block_no);
+        }
     }
 }
 

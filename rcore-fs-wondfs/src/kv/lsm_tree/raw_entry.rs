@@ -1,7 +1,8 @@
-pub static TOMBSTONE: &str = "TOMBSTONE";
+use std::cmp::Ordering;
+
 pub static EOF: &str = "EOF";
 
-#[derive(Clone)]
+#[derive(Eq, Clone)]
 pub struct Entry {
     pub crc32: u32,
     pub key: Vec<u8>,
@@ -39,5 +40,23 @@ impl Entry {
         ret[2] = (data >> 8) as u8;
         ret[3] = data as u8;
         ret.to_vec()
+    }
+}
+
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
     }
 }

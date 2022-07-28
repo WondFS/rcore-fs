@@ -4,10 +4,11 @@ use alloc::sync::Arc;
 use super::raw_entry;
 use crate::buf;
 use std::cmp::min;
+use std::collections::BTreeSet;
 
+#[derive(Clone)]
 pub struct BlockIter {
-    pub iter: usize,
-    pub entries: Vec<raw_entry::Entry>,
+    pub entries: BTreeSet<raw_entry::Entry>,
     pub entry_num: usize,
 }
 
@@ -15,7 +16,7 @@ impl BlockIter {
     pub fn new(block_id: u32, read_buf: Arc<RwLock<buf::BufCache>>) -> BlockIter {
         let eof_key = raw_entry::EOF.as_bytes().to_vec();
         let eof_value = raw_entry::EOF.as_bytes().to_vec();
-        let mut entries = vec![];
+        let mut entries = BTreeSet::new();
         let mut entry_num = 0;
         let mut is_end = false;
         let mut crc32: Option<u32> = None;
@@ -29,8 +30,13 @@ impl BlockIter {
             if is_end {
                 break;
             }
-            let page_data = read_buf.write().read(0, block_id+i);
-            let mut j = 0;
+            let page_data = read_buf.write().read(0, block_id * 128 + i);
+            let mut j;
+            if i == 0 {
+                j = 12
+            } else {
+                j = 0;
+            }
             while j < 4096 {
                 match read_index {
                     0 => {
@@ -64,6 +70,10 @@ impl BlockIter {
                             value_size = Some(BlockIter::decode_u32(&temp));
                             temp.clear();
                             read_index += 1;
+                            if key_size.unwrap() == 0 || value_size.unwrap() == 0 {
+                                read_index = 0;
+                                continue;
+                            }
                         }
                     },
                     3 => {
@@ -98,7 +108,8 @@ impl BlockIter {
                             continue;
                         }
                         entry_num += 1;
-                        entries.push(raw_entry::Entry::new(key.as_ref().unwrap().to_owned(), value.as_ref().unwrap().to_owned()));
+                        let query = raw_entry::Entry::new(key.as_ref().unwrap().to_owned(), value.as_ref().unwrap().to_owned());
+                        entries.replace(query);
                     },
                     _ => panic!(),
                 }
@@ -107,18 +118,16 @@ impl BlockIter {
         BlockIter {
             entries,
             entry_num,
-            iter: 0,
         }
     }
 
-    pub fn has_next(&self) -> bool {
-        self.iter < self.entry_num
-    }
-
-    pub fn next(&mut self) -> raw_entry::Entry {
-        let ret = self.iter;
-        self.iter += 1;
-        self.entries[ret].clone()
+    pub fn get(&self, key: &Vec<u8>) -> Option<Vec<u8>> {
+        let query = raw_entry::Entry::new( key.to_owned(), vec![]);
+        if let Some(entry) = self.entries.get(&query) {
+            Some(entry.value.clone())
+        } else {
+            None
+        }
     }
 
     pub fn verify_data(_: u32, _: &Vec<u8>) -> bool {
@@ -129,6 +138,6 @@ impl BlockIter {
         if data.len() != 4 {
             panic!();
         }
-        (data[0] as u32) << 24 + (data[1] as u32) << 16 + (data[2] as u32) << 8 + data[3] as u32
+        ((data[0] as u32) << 24) | ((data[1] as u32) << 16) | ((data[2] as u32) << 8) | (data[3] as u32)
     }
 }

@@ -2,6 +2,8 @@ extern crate alloc;
 use spin::RwLock;
 use alloc::sync::Arc;
 use std::cmp::max;
+use std::cmp::min;
+use std::ptr::read;
 use crate::buf;
 use super::gc::gc_manager;
 use super::component::bit;
@@ -16,7 +18,7 @@ pub enum KVOperationsObject {
     ExtraObject,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub struct DataObjectValueEntry {
     pub len: usize,
     pub offset: usize,
@@ -60,8 +62,6 @@ impl KVManager {
                 }
                 let mut data_object: DataObjectValue = serde_json::from_slice(&value.unwrap()).unwrap();
                 if len != 0 {
-                    Some(self.read_data_object_all(&mut data_object))
-                } else {
                     if off + len > data_object.size {
                         return Some(self.read_data_object_all(&mut data_object)[off..].to_vec());
                     }
@@ -72,16 +72,27 @@ impl KVManager {
                             index = i - 1;
                             break;
                         }
+                        if i == data_object.entries.len() - 1 {
+                            index = data_object.entries.len() - 1;
+                        }
                     }
-                    let mut remain_num = len;
                     let mut result = vec![];
+                    let mut remain_num = len;
+                    let data = self.read_data_object_entry(&data_object.entries[index]);
+                    let read_num = min(data.len(), remain_num);
+                    result.append(&mut data[off - data_object.entries[index].offset..off - data_object.entries[index].offset+read_num].to_vec());
+                    remain_num -= read_num;
+                    index += 1;
                     while remain_num != 0 {
-                        let mut data = self.read_data_object_entry(&data_object.entries[index]);
-                        result.append(&mut data);
-                        remain_num -= data.len();
+                        let data = self.read_data_object_entry(&data_object.entries[index]);
+                        let read_num = min(data.len(), remain_num);
+                        result.append(&mut data[..read_num].to_vec());
+                        remain_num -= read_num;
                         index += 1;
                     }
                     Some(result)
+                } else {
+                    Some(self.read_data_object_all(&mut data_object))
                 }
             },
             KVOperationsObject::ExtraObject => {
@@ -183,9 +194,9 @@ impl KVManager {
                 if pre_value.is_none() {
                     return None;
                 }
+                let mut data_object: DataObjectValue = serde_json::from_slice(&pre_value.unwrap()).unwrap();
+                self.delete_data_object(&mut data_object, off, len, extra_info);
                 if len != 0 {
-                    let mut data_object: DataObjectValue = serde_json::from_slice(&pre_value.unwrap()).unwrap();
-                    self.delete_data_object(&mut data_object, off, len, extra_info);
                     let value = serde_json::to_vec(&data_object).ok().unwrap();
                     self.lsm_tree.put(&key.as_bytes().to_vec(), &value);
                     Some(data_object.size)
@@ -229,7 +240,7 @@ impl KVManager {
 
 impl KVManager {
     pub fn set_data_object(&mut self, object: &mut DataObjectValue, off: usize, len: usize, value: &Vec<u8>, ino: u32) {
-        if off >= object.size {
+        if off > object.size {
             return;
         }
         let size = (len - 1) / 4096 + 1;
@@ -245,13 +256,14 @@ impl KVManager {
             if i == size - 1 {
                 let mut data = value[start_index..].to_vec();
                 data.extend(vec![10; 4096 - data.len()]);
-                self.buf.write().write(0, page_pointer + i as u32, &self.trans(data));
-                self.update_bit(page_pointer + i as u32, true);
-                self.update_pit(page_pointer + i as u32, ino);
+                self.write_page(page_pointer + i as u32, &self.trans(data), true);
             } else {
-                self.buf.write().write(0, page_pointer + i as u32, &self.trans(value[start_index..end_index].to_vec()));
+                self.write_page(page_pointer + i as u32, &self.trans(value[start_index..end_index].to_vec()), true);
             }
+            self.update_bit(page_pointer + i as u32, true);
+            self.update_pit(page_pointer + i as u32, ino);
         }
+        let mut remove_list = vec![];
         for (index, entry) in object.entries.clone().iter().enumerate() {
             if entry.offset + entry.len <= new_entry.offset {
                 continue;
@@ -265,7 +277,7 @@ impl KVManager {
                 for i in 0..size as u32 {
                     self.dirty_pit(entry.page_pointer + i);
                 }
-                object.entries.remove(index);
+                remove_list.push(object.entries[index].page_pointer);
             } else {
                 let size = (entry.len - 1) / 4096 + 1;
                 let o_size = (valid_prev - 1) / 4096 + 1;
@@ -276,6 +288,7 @@ impl KVManager {
             }
             if valid_suffix > 0 {
                 let data = self.read_data_object_entry(entry);
+                let data = data[data.len()-valid_suffix..].to_vec();
                 let size = (valid_suffix - 1) / 4096 + 1;
                 let page_pointer = self.find_write_pos(size);
                 let new_entry = DataObjectValueEntry {
@@ -289,16 +302,22 @@ impl KVManager {
                     if i == size - 1 {
                         let mut data = data[start_index..].to_vec();
                         data.extend(vec![10; 4096 - data.len()]);
-                        self.buf.write().write(0, page_pointer + i as u32, &self.trans(data));
-                        self.update_bit(page_pointer + i as u32, true);
-                        self.update_pit(page_pointer + i as u32, ino);
+                        self.write_page(page_pointer + i as u32, &self.trans(data), true);
                     } else {
-                        self.buf.write().write(0, page_pointer + i as u32, &self.trans(data[start_index..end_index].to_vec()));
-                        self.update_bit(page_pointer + i as u32, true);
-                        self.update_pit(page_pointer + i as u32, ino);
+                        self.write_page(page_pointer + i as u32, &self.trans(data[start_index..end_index].to_vec()), true);
                     }
+                    self.update_bit(page_pointer + i as u32, true);
+                    self.update_pit(page_pointer + i as u32, ino);
                 }
                 object.entries.push(new_entry);
+            }
+        }
+        for pointer in remove_list.iter() {
+            for i in 0..object.entries.len() {
+                if object.entries[i].page_pointer == *pointer {
+                    object.entries.remove(i);
+                    break;
+                }
             }
         }
         object.entries.push(new_entry);
@@ -314,6 +333,7 @@ impl KVManager {
         if off >= object.size {
             return;
         }
+        let mut remove_list = vec![];
         for (index, entry) in object.entries.clone().iter().enumerate() {
             if entry.offset + entry.len <= off {
                 continue
@@ -328,7 +348,7 @@ impl KVManager {
                     for i in 0..size as u32 {
                         self.dirty_pit(entry.page_pointer + i);
                     }
-                    object.entries.remove(index);
+                    remove_list.push(object.entries[index].page_pointer);
                 } else {
                     let size = (entry.len - 1) / 4096 + 1;
                     let o_size = (valid_prev - 1) / 4096 + 1;
@@ -339,6 +359,7 @@ impl KVManager {
                 }
                 if valid_suffix > 0 {
                     let data = self.read_data_object_entry(entry);
+                    let data = data[data.len()-valid_suffix..].to_vec();
                     let size = (valid_suffix - 1) / 4096 + 1;
                     let page_pointer = self.find_write_pos(size);
                     let new_entry = DataObjectValueEntry {
@@ -352,16 +373,22 @@ impl KVManager {
                         if i == size - 1 {
                             let mut data = data[start_index..].to_vec();
                             data.extend(vec![10; 4096 - data.len()]);
-                            self.buf.write().write(0, page_pointer + i as u32, &self.trans(data));
-                            self.update_bit(page_pointer + i as u32, true);
-                            self.update_pit(page_pointer + i as u32, ino);
+                            self.write_page(page_pointer + i as u32, &self.trans(data), true);
                         } else {
-                            self.buf.write().write(0, page_pointer + i as u32, &self.trans(data[start_index..end_index].to_vec()));
-                            self.update_bit(page_pointer + i as u32, true);
-                            self.update_pit(page_pointer + i as u32, ino);
+                            self.write_page(page_pointer + i as u32, &self.trans(data[start_index..end_index].to_vec()), true);
                         }
+                        self.update_bit(page_pointer + i as u32, true);
+                        self.update_pit(page_pointer + i as u32, ino);
                     }
                     object.entries.push(new_entry);
+                }
+            }
+        }
+        for pointer in remove_list.iter() {
+            for i in 0..object.entries.len() {
+                if object.entries[i].page_pointer == *pointer {
+                    object.entries.remove(i);
+                    break;
                 }
             }
         }
@@ -387,7 +414,7 @@ impl KVManager {
     pub fn read_data_object_entry(&mut self, entry: &DataObjectValueEntry) -> Vec<u8> {
         let mut data = vec![];
         for i in 0..(entry.len-1/4096)+1 {
-            let page_data = self.buf.write().read(0, entry.page_pointer + i as u32);
+            let page_data = self.read_page(entry.page_pointer + i as u32, true);
             data.append(&mut page_data.to_vec());
         }
         data[..entry.len].to_vec()
@@ -424,15 +451,5 @@ impl KVManager {
     pub fn trans<T, const N: usize>(&self, v: Vec<T>) -> [T; N] {
         v.try_into()
             .unwrap_or_else(|v: Vec<T>| panic!("Expected a Vec of length{} but it was {}", N, v.len()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn basics() {
-        
     }
 }

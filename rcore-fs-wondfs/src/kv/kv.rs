@@ -25,6 +25,10 @@ impl KV {
         }
     }
 
+    pub fn mount(&mut self) {
+        self.manager.mount();
+    }
+
     pub fn allocate_indoe(&mut self, metadata: &mut InodeMetadata) -> u32 {
         self.max_ino += 1;
         metadata.ino = self.max_ino;
@@ -43,7 +47,7 @@ impl KV {
 
     pub fn get_inode_metadata(&mut self, ino: u32) -> Option<InodeMetadata> {
         let key = format!("m:{}", ino);
-        let data = self.manager.get(&key, 0, 0).unwrap();
+        let data = self.manager.get(&key, 0, 0)?;
         serde_json::from_slice(&data).ok()
     }
 

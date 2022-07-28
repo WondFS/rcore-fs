@@ -3,7 +3,7 @@ use crate::driver::disk_manager;
 
 pub struct BufCache {
     pub capacity: usize,
-    pub cache: lru_cache::LRUCache<Buf>,
+    pub cache: lru_cache::LRUCache<[u8; 4096]>,
     pub disk_manager: disk_manager::DiskManager,
 }
 
@@ -11,8 +11,8 @@ impl BufCache {
     pub fn new() -> BufCache {
         let capacity = 1024;
         BufCache {
-            capacity: capacity as usize,
-            cache: lru_cache::LRUCache::new(capacity as usize),
+            capacity,
+            cache: lru_cache::LRUCache::new(capacity),
             disk_manager: disk_manager::DiskManager::new(true, None),
         }
     }
@@ -48,33 +48,17 @@ impl BufCache {
     fn get_data(&mut self, address: u32) -> Option<[u8; 4096]> {
         let data = self.cache.get(address);
         if data.is_some() {
-            return Some(data.unwrap().data);
+            return Some(data.unwrap());
         }
         None
     }
 
     fn put_data(&mut self, address: u32, data: [u8; 4096]) {
-        let buf = Buf::new(address, data);
-        self.cache.put(address, buf);
+        self.cache.put(address, data);
     }
 
     fn remove_data(&mut self, address: u32) {
         self.cache.remove(address);
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct Buf {
-    address: u32,
-    data: [u8; 4096],
-}
-
-impl Buf {
-    fn new(address: u32, data: [u8; 4096]) -> Buf {
-        Buf {
-            address,
-            data,
-        }
     }
 }
 

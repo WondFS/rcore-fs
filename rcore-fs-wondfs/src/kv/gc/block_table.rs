@@ -160,23 +160,3 @@ impl BlockInfo {
         (self.clean_num + self.used_num) as f32 / self.dirty_num as f32
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn basics() {
-        let mut table = BlockTable::new(32);
-        table.set_page(0, PageUsedStatus::Busy(0));
-        table.set_page(1, PageUsedStatus::Busy(0));
-        table.set_page(2, PageUsedStatus::Busy(0));
-        table.set_page(3, PageUsedStatus::Busy(0));
-        assert_eq!(table.table[0].block_no, 0);
-        assert_eq!(table.table[0].reserved_offset, 4);
-        assert_eq!(table.table[0].reserved_size, 124);
-        table.erase_block(0);
-        assert_eq!(table.table[0].reserved_offset, 0);
-        assert_eq!(table.table[0].reserved_size, 128);
-    }
-}

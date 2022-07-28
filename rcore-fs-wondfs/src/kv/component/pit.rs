@@ -232,3 +232,42 @@ impl Iterator for DataRegion<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::kv::kv_manager;
+    use crate::util::array::array;
+    use super::*;
+
+    #[test]
+    fn basics() {
+        let mut pit = PIT::new();
+        let mut data = array::Array1::<[u8; 4096]>::new(128, [0; 4096]);
+        let mut temp = data.get(0);
+        temp[0] = 0x77;
+        temp[1] = 0x77;
+        temp[2] = 0xee;
+        temp[3] = 0xee;
+        data.set(0, temp);
+        let mut temp = data.get(100);
+        temp[312] = 234;
+        data.set(100, temp);
+        let mut temp = data.get(11);
+        temp[232] = 67;
+        data.set(11, temp);
+        let mut temp = data.get(121);
+        temp[2332] = 123;
+        data.set(121, temp);
+        let iter = DataRegion::new(&data, PITStrategy::Serial);
+        for (index, ino) in iter {
+            if ino != 0 {
+                pit.init_page(index, ino);
+            }
+        }
+        assert_eq!(kv_manager::KVManager::transfer(&pit.encode()), data);
+        assert_eq!(pit.need_sync(), false);
+        pit.set_page(200, 100);
+        assert_eq!(pit.get_page(200), 100);
+        assert_eq!(pit.need_sync(), true);
+    }
+}

@@ -14,7 +14,7 @@ impl DiskManager {
         let mut driver = None;
         let mut fake_disk = None;
         if is_virtual {
-            let block_num = 32;
+            let block_num = 128;
             fake_disk = Some(fake_disk::FakeDisk::new(block_num * 128));
         } else {
             driver = Some(disk::DiskDriver::new(device.unwrap()));
